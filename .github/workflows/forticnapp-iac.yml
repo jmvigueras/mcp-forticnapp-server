@@ -1,0 +1,47 @@
+name: IaC:jmvigueras/mcp-fortios-server
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: forticnapp-iac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  forticnapp-iac:
+    runs-on: ubuntu-24.04
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        
+      - name: Create environment variables file
+        run: |
+          env | grep "GITHUB_\|LW_\|CI_" > env.list || true
+
+          echo "LW_ACCOUNT=${{ secrets.LW_ACCOUNT_NAME }}" >> env.list
+          echo "LW_API_KEY=${{ secrets.LW_API_KEY }}" >> env.list
+          echo "LW_API_SECRET=${{ secrets.LW_API_SECRET }}" >> env.list
+
+          # Fail job if critical findings exist (change to HIGH=1 if desired)
+          echo "EXIT_FLAG=CRITICAL=5" >> env.list
+          
+      - name: check ENV file
+        run: |
+          echo "--- env.list created ---"
+          cat env.list | grep -v "SECRET" || true
+
+      - name: Run IaC scan
+        run: |
+          echo "Running Lacework/FortiCNAPP IaC scanner..."
+          docker run --rm \
+            --env-file env.list \
+            -v "$(pwd):/app/src" \
+            lacework/codesec:stable \
+            lacework iac scan --directory=. --noninteractive
+
+      - name: Clean up environment file
+        if: always()
+        run: rm -f env.list
